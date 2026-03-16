@@ -37,7 +37,27 @@ if (!fs.existsSync(SENTINEL)) {
 console.log('[cs-setup] Script starting...');
 
 const { installHusky } = require('../lib/husky');
-...
+const { installGitleaks } = require('../lib/gitleaks');
+const { installSonarScanner, setupSonarProperties } = require('../lib/sonarqube');
+const { setupPreCommitHook } = require('../lib/hooks');
+const { setupPrePushHook, setupCIScript,
+  setupCIWorkflow, validateProject,
+  ensurePackageLock } = require('../lib/ci');
+const { isGitRepo } = require('../lib/git');
+const { logInfo, logError, logSuccess } = require('../lib/logger');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2 — Parse command and detect context
+// ─────────────────────────────────────────────────────────────────────────────
+const command = process.argv[2];
+const validCommands = ['init', 'install'];
+
+if (command && !validCommands.includes(command)) {
+  console.log('Usage: cs-setup [init|install]');
+  process.exit(0);
+}
+
+const isPostInstall = process.env.npm_lifecycle_event === 'postinstall';
 const initCwd = process.env.INIT_CWD || process.env.npm_config_local_prefix;
 
 // ─────────────────────────────────────────────────────────────────────────────
