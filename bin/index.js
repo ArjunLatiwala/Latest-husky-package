@@ -123,9 +123,11 @@ if (isPostInstall) {
       logInfo('Monorepo detected — hooks at git root, config files at project root.');
     }
 
+    const { installDevDependency } = require('../lib/packageManager');
     await installHusky(gitRoot);
     await installGitleaks();
     await installSonarScanner();
+    await installDevDependency('eslint');
     await setupSonarProperties();
     await setupPreCommitHook(gitRoot);
     logSuccess('Husky + Gitleaks + SonarQube pre-commit hook ready.');
