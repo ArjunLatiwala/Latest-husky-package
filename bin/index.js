@@ -34,55 +34,40 @@ if (!fs.existsSync(SENTINEL)) {
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 1 — Now safe to require our dependencies
 // ─────────────────────────────────────────────────────────────────────────────
+console.log('[cs-setup] Script starting...');
+
 const { installHusky } = require('../lib/husky');
-const { installGitleaks } = require('../lib/gitleaks');
-const { installSonarScanner, setupSonarProperties } = require('../lib/sonarqube');
-const { setupPreCommitHook } = require('../lib/hooks');
-const { setupPrePushHook, setupCIScript,
-  setupCIWorkflow, validateProject,
-  ensurePackageLock } = require('../lib/ci');
-const { isGitRepo } = require('../lib/git');
-const { logInfo, logError, logSuccess } = require('../lib/logger');
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 2 — Parse command and detect context
-// ─────────────────────────────────────────────────────────────────────────────
-const command = process.argv[2];
-const validCommands = ['init', 'install'];
-
-if (command && !validCommands.includes(command)) {
-  console.log('Usage: cs-setup [init|install]');
-  process.exit(0);
-}
-
-const isPostInstall = process.env.npm_lifecycle_event === 'postinstall';
-const ownPackageName = process.env.npm_package_name;
+...
 const initCwd = process.env.INIT_CWD || process.env.npm_config_local_prefix;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 3 — Guard: skip if npm is installing OUR OWN deps (nested postinstall)
 //
-// npm fires postinstall for every package in the tree. If npm_package_name is
-// 'cs-setup' and we're running from inside our own folder (not the user's
-// project), this is a nested/self-install call — exit immediately.
+// We want to run ONLY when the USER installs us.
+// If process.cwd() is the SAME as initCwd, it means someone is running 
+// 'npm install' inside the cs-setup folder itself (development) — skip.
 // ─────────────────────────────────────────────────────────────────────────────
 if (isPostInstall) {
-  if (ownPackageName === 'cs-setup' && initCwd && process.cwd() !== initCwd) {
+  const currentDir = path.resolve(process.cwd());
+  const projectDir = initCwd ? path.resolve(initCwd) : null;
+
+  console.log(`[cs-setup] Post-install check: currentDir=${currentDir}, projectDir=${projectDir}`);
+
+  // If we are developing (currentDir === projectDir), skip setup
+  if (currentDir === projectDir) {
+    console.log('[cs-setup] Development detected — skipping automatic setup.');
     process.exit(0);
   }
 
-  if (!initCwd) {
-    console.error(
-      '[cs-setup] Could not determine your project directory.\n' +
-      '  → Run manually: npx cs-setup init'
-    );
+  if (!projectDir) {
+    console.error('[cs-setup] Could not determine project directory. Run `npx cs-setup init` manually.');
     process.exit(0);
   }
 
-  // cd into the user's project (where they ran npm install)
-  if (process.cwd() !== initCwd) {
+  // cd into the user's project
+  if (process.cwd() !== projectDir) {
     try {
-      process.chdir(initCwd);
+      process.chdir(projectDir);
     } catch (e) {
       console.error(`[cs-setup] Failed to switch to project directory: ${e.message}`);
       process.exit(0);
