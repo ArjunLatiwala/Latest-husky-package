@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 0 — Self-install own dependencies using ONLY Node.js built-ins.
+//
+// When installed via `npm install /local/path` or `npm install github:user/repo`,
+// npm does NOT guarantee our own node_modules exists before running postinstall.
+// We must bootstrap ourselves using only fs, path, child_process (always available).
+// ─────────────────────────────────────────────────────────────────────────────
+const fs = require('fs');
+const path = require('path');
+const { execSync, spawnSync } = require('child_process');
+
+const PKG_DIR = path.resolve(__dirname, '..');          // our package root
+const OWN_NODE_MODULES = path.join(PKG_DIR, 'node_modules');
+const SENTINEL = path.join(OWN_NODE_MODULES, 'fs-extra', 'package.json');
+
+if (!fs.existsSync(SENTINEL)) {
+  console.log('[cs-setup] Installing own dependencies first...');
+  const result = spawnSync('npm', ['install', '--ignore-scripts'], {
+    cwd: PKG_DIR,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
+  if (result.status !== 0) {
+    console.error('[cs-setup] Failed to install own dependencies. Please run:');
+    console.error(`  cd ${PKG_DIR} && npm install`);
+    process.exit(0);
+  }
+  console.log('[cs-setup] Own dependencies installed.');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 1 — Now safe to require our dependencies
+// ─────────────────────────────────────────────────────────────────────────────
+const { installHusky } = require('../lib/husky');
+const { installGitleaks } = require('../lib/gitleaks');
+const { installSonarScanner, setupSonarProperties } = require('../lib/sonarqube');
+const { setupPreCommitHook } = require('../lib/hooks');
+const { setupPrePushHook, setupCIScript,
+  setupCIWorkflow, validateProject,
+  ensurePackageLock } = require('../lib/ci');
+const { isGitRepo } = require('../lib/git');
+const { logInfo, logError, logSuccess } = require('../lib/logger');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2 — Parse command and detect context
+// ─────────────────────────────────────────────────────────────────────────────
+const command = process.argv[2];
+const validCommands = ['init', 'install'];
+
+if (command && !validCommands.includes(command)) {
+  console.log('Usage: cs-setup [init|install]');
+  process.exit(0);
+}
+
+const isPostInstall = process.env.npm_lifecycle_event === 'postinstall';
+const ownPackageName = process.env.npm_package_name;
+const initCwd = process.env.INIT_CWD || process.env.npm_config_local_prefix;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 3 — Guard: skip if npm is installing OUR OWN deps (nested postinstall)
+//
+// npm fires postinstall for every package in the tree. If npm_package_name is
+// 'cs-setup' and we're running from inside our own folder (not the user's
+// project), this is a nested/self-install call — exit immediately.
+// ─────────────────────────────────────────────────────────────────────────────
+if (isPostInstall) {
+  if (ownPackageName === 'cs-setup' && initCwd && process.cwd() !== initCwd) {
+    process.exit(0);
+  }
+
+  if (!initCwd) {
+    console.error(
+      '[cs-setup] Could not determine your project directory.\n' +
+      '  → Run manually: npx cs-setup init'
+    );
+    process.exit(0);
+  }
+
+  // cd into the user's project (where they ran npm install)
+  if (process.cwd() !== initCwd) {
+    try {
+      process.chdir(initCwd);
+    } catch (e) {
+      console.error(`[cs-setup] Failed to switch to project directory: ${e.message}`);
+      process.exit(0);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 4 — Run the full setup
+// ─────────────────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    logInfo('cs-setup: Initializing secure git hooks...');
+
+    const { found, gitRoot, projectRoot } = await isGitRepo();
+
+    if (!found) {
+      logError('Not inside a git repository — skipping setup.');
+      logInfo('Run `git init` first, then: npx cs-setup init');
+      process.exit(0);
+    }
+
+    if (gitRoot !== projectRoot) {
+      logInfo(`Git root:     ${gitRoot}`);
+      logInfo(`Project root: ${projectRoot}`);
+      logInfo('Monorepo detected — hooks at git root, config files at project root.');
+    }
+
+    await installHusky(gitRoot);
+    await installGitleaks();
+    await installSonarScanner();
+    await setupSonarProperties();
+    await setupPreCommitHook(gitRoot);
+    logSuccess('Husky + Gitleaks + SonarQube pre-commit hook ready.');
+    logInfo('Edit sonar-project.properties — set sonar.host.url and sonar.token.');
+
+    await ensurePackageLock();
+    await validateProject();
+    await setupCIScript(gitRoot);
+    await setupCIWorkflow();
+    await setupPrePushHook(gitRoot);
+    logSuccess('Pre-push hook + GitHub Actions workflow ready.');
+
+  } catch (err) {
+    logError(`cs-setup failed: ${err.message}`);
+    process.exit(0);
+  }
+})();
