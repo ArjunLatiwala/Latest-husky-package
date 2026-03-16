@@ -134,7 +134,7 @@ if (isPostInstall) {
     logInfo('Edit sonar-project.properties — set sonar.host.url and sonar.token.');
 
     await ensurePackageLock();
-    await validateProject();
+    await require('../lib/ci').ensureProjectScripts();
     await setupCIScript(gitRoot);
     await setupCIWorkflow();
     await setupPrePushHook(gitRoot);
