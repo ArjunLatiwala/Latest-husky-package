@@ -2,10 +2,6 @@
 
 # ---------------------------------------------------------------
 # run-ci-checks.sh — Smoke Tests + Newman API Tests
-#
-# Called by .husky/pre-push by default.
-# To move to pre-commit: add './scripts/run-ci-checks.sh' to .husky/pre-commit
-# To run manually: sh scripts/run-ci-checks.sh
 # ---------------------------------------------------------------
 
 # ---------------------------------------------------------------
@@ -33,20 +29,34 @@ fi
 echo ""
 echo "[CI Checks] Changed files detected:"
 echo "$CHANGED" | sed 's/^/  -> /'
-
 echo ""
 echo "[CI Checks] Starting checks..."
 
 # ---------------------------------------------------------------
-# Find which directory has the start script
-# Checks root first, then common subfolder names
+# Auto-detect start command
+# Priority: start > backend > server > api > dev
+# dev is checked LAST because it often runs multiple processes
+# (frontend + backend together via concurrently) which breaks smoke tests
+# Also searches common subfolders if no package.json at root
 # ---------------------------------------------------------------
-find_project_dir() {
-  for DIR in . backend server api app frontend src; do
+find_start_cmd() {
+  PKG_DIR=$1
+  for SCRIPT in start backend server api dev; do
+    HAS=$(node -e "try{const p=require('./$PKG_DIR/package.json');console.log(p.scripts&&p.scripts['$SCRIPT']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
+    if [ "$HAS" = "yes" ]; then
+      echo "$SCRIPT"
+      return
+    fi
+  done
+  echo "none"
+}
+
+find_project_with_start() {
+  for DIR in . backend server api app; do
     if [ -f "$DIR/package.json" ]; then
-      HAS_START=$(node -e "try{const p=require('./$DIR/package.json');console.log(p.scripts&&p.scripts.start?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
-      if [ "$HAS_START" = "yes" ]; then
-        echo "$DIR"
+      CMD=$(find_start_cmd "$DIR")
+      if [ "$CMD" != "none" ]; then
+        echo "$DIR:$CMD"
         return
       fi
     fi
@@ -54,38 +64,39 @@ find_project_dir() {
   echo "none"
 }
 
-PROJECT_DIR=$(find_project_dir)
+RESULT=$(find_project_with_start)
 
-if [ "$PROJECT_DIR" = "none" ]; then
-  echo "[Smoke Tests] No start script found in root or subfolders. Skipping smoke tests."
+if [ "$RESULT" = "none" ]; then
+  echo "[Smoke Tests] No runnable start script found anywhere. Skipping smoke tests."
 else
+  PROJECT_DIR=$(echo "$RESULT" | cut -d':' -f1)
+  START_CMD=$(echo "$RESULT" | cut -d':' -f2)
 
-  # cd into project dir so npm start/test work correctly
+  echo "[Smoke Tests] Found '$START_CMD' script in: $PROJECT_DIR"
+
+  # cd into project dir so npm commands work correctly
   cd "$PROJECT_DIR" || exit 1
 
-  # Check if test script exists
-  HAS_TEST=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.test?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
-
   # ---------------------------------------------------------------
-  # Step 1: Smoke Tests
+  # Smoke Tests — start server + auto-detect port
   # ---------------------------------------------------------------
   echo ""
-  echo "[Smoke Tests] Starting server from: $PROJECT_DIR"
+  echo "[Smoke Tests] Starting server with: npm run $START_CMD"
 
-  npm start &
+  npm run $START_CMD &
   SERVER_PID=$!
 
-  # Auto-detect port + detect server crash early
   SERVER_UP=0
   for i in $(seq 1 30); do
-    # Check if server process crashed
+    # Detect server crash early — no point waiting 30s if process already died
     if ! kill -0 $SERVER_PID 2>/dev/null; then
-      echo "[Smoke Tests] Server process crashed. Skipping smoke tests."
+      echo "[Smoke Tests] Server process crashed — skipping smoke tests."
       SERVER_UP=0
       break
     fi
 
-    for PORT_TRY in 3000 5000 8000 8080 4000 4200 3001 8081 1337 5001; do
+    # Try all common ports
+    for PORT_TRY in 3000 5000 8000 8080 4000 4200 3001 8081 1337 5001 6000 7000; do
       if curl -sf http://localhost:$PORT_TRY > /dev/null 2>&1; then
         PORT=$PORT_TRY
         SERVER_UP=1
@@ -99,12 +110,15 @@ else
   done
 
   if [ $SERVER_UP -eq 0 ]; then
-    echo "[Smoke Tests] Server did not start. Skipping smoke tests."
+    echo "[Smoke Tests] Server did not start in time — skipping smoke tests."
     kill $SERVER_PID 2>/dev/null
   else
 
+    # Check for test script
+    HAS_TEST=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.test?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
+
     if [ "$HAS_TEST" = "no" ]; then
-      echo "[Smoke Tests] No test script found. Skipping npm test."
+      echo "[Smoke Tests] No test script found — skipping npm test."
     else
       echo "[Smoke Tests] Running npm test..."
       npm test
@@ -120,7 +134,7 @@ else
     fi
 
     # ---------------------------------------------------------------
-    # Step 2: Newman
+    # Newman API Tests
     # ---------------------------------------------------------------
     echo ""
     echo "[Newman] Looking for Postman collections..."
@@ -138,7 +152,7 @@ else
     else
 
       if ! command -v newman > /dev/null 2>&1; then
-        echo "[Newman] Installing newman globally..."
+        echo "[Newman] Installing newman..."
         npm install -g newman newman-reporter-htmlextra 2>/dev/null || true
       fi
 
@@ -180,7 +194,6 @@ else
       fi
 
       echo "[Newman] All collections passed. ✔"
-
     fi
   fi
 fi

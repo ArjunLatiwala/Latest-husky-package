@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Pre-push hook — runs from git root
+./scripts/run-ci-checks.sh

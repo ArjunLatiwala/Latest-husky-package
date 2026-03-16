@@ -95,6 +95,13 @@ if (isPostInstall) {
 // ─────────────────────────────────────────────────────────────────────────────
 (async () => {
   try {
+    const targetTool = process.argv[3]; // e.g. 'gitleaks'
+
+    if (command === 'install' && targetTool === 'gitleaks') {
+      await installGitleaks();
+      process.exit(0);
+    }
+
     logInfo('cs-setup: Initializing secure git hooks...');
 
     const { found, gitRoot, projectRoot } = await isGitRepo();

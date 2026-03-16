@@ -1,0 +1,147 @@
+#!/bin/sh
+
+# Collect staged files (git always returns paths relative to git root)
+ALL_STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$ALL_STAGED" ]; then
+  echo "No changed files detected. Skipping checks."
+  exit 0
+fi
+
+STAGED_FILES="$ALL_STAGED"
+
+if [ -z "$STAGED_FILES" ]; then
+  echo "No staged files in this project directory. Skipping checks."
+  exit 0
+fi
+
+echo "[Git Diff] Changed files in this commit:"
+echo "$STAGED_FILES" | while IFS= read -r FILE; do
+  echo "  -> $FILE"
+done
+
+# ---------------------------------------------------------------
+# ESLint — Auto-installs if missing, blocks commit only if lint fails
+# ---------------------------------------------------------------
+echo ""
+echo "[ESLint] Linting staged JS/TS files..."
+
+LINT_FILES=$(echo "$STAGED_FILES" | grep -E '\.(js|jsx|ts|tsx|mjs|cjs)$' || true)
+
+if [ -z "$LINT_FILES" ]; then
+  echo "[ESLint] No JS/TS files staged. Skipping."
+else
+  if [ ! -f "./node_modules/.bin/eslint" ]; then
+    echo "[ESLint] eslint not found — installing locally..."
+    npm install --save-dev eslint --quiet 2>&1 | tail -n 3
+  fi
+
+  if [ -f "./node_modules/.bin/eslint" ]; then
+    ESLINT_BIN="./node_modules/.bin/eslint"
+    
+    # Check for ESLint config files (v9+ or legacy)
+    if [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ] || [ -f "eslint.config.cjs" ] ||        [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc.yml" ] || [ -f ".eslintrc" ]; then
+      echo "[ESLint] Running lint check..."
+      echo "$LINT_FILES" | xargs $ESLINT_BIN
+      LINT_EXIT=$?
+      if [ $LINT_EXIT -ne 0 ]; then
+        echo "[ESLint] Linting failed. Please fix errors and try again."
+        exit 1
+      fi
+      echo "[ESLint] Lint check passed. ✔"
+    else
+      echo "[ESLint] No configuration file found — skipping lint check."
+    fi
+  else
+    echo "[ESLint] Failed to install eslint — skipping (check your connection)."
+  fi
+fi
+
+# ---------------------------------------------------------------
+# Gitleaks — Auto-installs if missing, blocks commit if secrets found
+# ---------------------------------------------------------------
+echo ""
+echo "[Gitleaks] Scanning staged files for secrets..."
+
+GITLEAKS_BIN="./.tools/gitleaks/gitleaks"
+
+if [ ! -f "$GITLEAKS_BIN" ]; then
+  echo "[Gitleaks] Binary not found — attempting automatic installation..."
+  # Call our own CLI to handle the complex download/extract logic
+  npx cs-setup install gitleaks
+fi
+
+if [ ! -f "$GITLEAKS_BIN" ]; then
+  echo "[Gitleaks] Automatic installation failed — skipping."
+else
+  GITLEAKS_TMPDIR=$(mktemp -d)
+
+  echo "$STAGED_FILES" | while IFS= read -r FILE; do
+    case "$FILE" in
+      sonar-project.properties) ;;
+      .tools/*) ;;
+      *)
+        if [ -f "$FILE" ]; then
+          DEST="$GITLEAKS_TMPDIR/$FILE"
+          mkdir -p "$(dirname "$DEST")"
+          cp "$FILE" "$DEST"
+        fi
+        ;;
+    esac
+  done
+
+  $GITLEAKS_BIN detect --source "$GITLEAKS_TMPDIR" --no-git --verbose
+  GITLEAKS_EXIT=$?
+  rm -rf "$GITLEAKS_TMPDIR"
+
+  if [ $GITLEAKS_EXIT -ne 0 ]; then
+    echo "[Gitleaks] Secrets detected! Commit blocked."
+    exit 1
+  fi
+
+  echo "[Gitleaks] No secrets found. ✔"
+fi
+
+# ---------------------------------------------------------------
+# SonarQube — Auto-installs scanner if missing, then runs analysis
+# ---------------------------------------------------------------
+echo ""
+echo "[SonarQube] Scanning staged files..."
+
+if [ ! -f "./node_modules/.bin/sonar-scanner" ]; then
+  echo "[SonarQube] sonar-scanner not found — installing..."
+  npm install --save-dev sonarqube-scanner --quiet 2>&1 | tail -n 3
+fi
+
+if [ -f "./node_modules/.bin/sonar-scanner" ]; then
+  SONAR_BIN="./node_modules/.bin/sonar-scanner"
+elif command -v sonar-scanner >/dev/null 2>&1; then
+  SONAR_BIN="sonar-scanner"
+else
+  SONAR_BIN="npx sonarqube-scanner"
+fi
+
+if [ ! -f "sonar-project.properties" ]; then
+  echo "[SonarQube] sonar-project.properties not found — skipping."
+else
+  # Skip if token is still the placeholder
+  if grep -q "REPLACE_WITH_YOUR_TOKEN" sonar-project.properties; then
+    echo "[SonarQube] Token is still the default placeholder — skipping scan."
+    echo "[SonarQube] Tip: Set sonar.token in sonar-project.properties to enable scanning."
+  else
+    SONAR_INCLUSIONS=$(echo "$STAGED_FILES" | tr '\n' ',' | sed 's/,$//')
+    echo "[SonarQube] Scanning: $SONAR_INCLUSIONS"
+
+    $SONAR_BIN -Dsonar.inclusions="$SONAR_INCLUSIONS"
+    SONAR_EXIT=$?
+
+    if [ $SONAR_EXIT -ne 0 ]; then
+      echo "[SonarQube] Analysis failed. Commit blocked."
+      exit 1
+    fi
+
+    echo "[SonarQube] Analysis passed. ✔"
+  fi
+fi
+
+exit 0
