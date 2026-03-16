@@ -2,5 +2,5 @@ projectKey=cs-setup
 serverUrl=http://192.168.1.72:9000
 serverVersion=26.3.0.120487
 dashboardUrl=http://192.168.1.72:9000/dashboard?id=cs-setup
-ceTaskId=fa1e58ae-339f-41dd-a695-ffbff7770708
-ceTaskUrl=http://192.168.1.72:9000/api/ce/task?id=fa1e58ae-339f-41dd-a695-ffbff7770708
+ceTaskId=072ac610-afab-4fc5-a4fa-83141607fb79
+ceTaskUrl=http://192.168.1.72:9000/api/ce/task?id=072ac610-afab-4fc5-a4fa-83141607fb79

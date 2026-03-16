@@ -24,13 +24,19 @@ done
 # ESLint — Auto-installs if missing, blocks commit only if lint fails
 # ---------------------------------------------------------------
 echo ""
-echo "[ESLint] Linting staged JS/TS files..."
+echo "[ESLint] Checking staged files for JS/TS..."
 
-LINT_FILES=$(echo "$STAGED_FILES" | grep -E '\.(js|jsx|ts|tsx|mjs|cjs)$' || true)
+# Use grep -E for extended regex, ensure we catch extensions correctly
+LINT_FILES=$(echo "$STAGED_FILES" | grep -E "\.(js|jsx|ts|tsx|mjs|cjs)$" || true)
 
-if [ -z "$LINT_FILES" ]; then
-  echo "[ESLint] No JS/TS files staged. Skipping."
+if [ -n "$LINT_FILES" ]; then
+  echo "[ESLint] Files found for linting:"
+  echo "$LINT_FILES" | sed 's/^/  -> /'
 else
+  echo "[ESLint] No JS/TS files staged. Skipping."
+fi
+
+if [ -n "$LINT_FILES" ]; then
   if [ ! -f "./node_modules/.bin/eslint" ]; then
     echo "[ESLint] eslint not found — installing locally..."
     npm install --save-dev eslint --quiet 2>&1 | tail -n 3
@@ -42,10 +48,11 @@ else
     # Check for ESLint config files (v9+ or legacy)
     if [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ] || [ -f "eslint.config.cjs" ] ||        [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc.yml" ] || [ -f ".eslintrc" ]; then
       echo "[ESLint] Running lint check..."
+      # Use xargs carefully, ensure we pass the found files
       echo "$LINT_FILES" | xargs $ESLINT_BIN
       LINT_EXIT=$?
       if [ $LINT_EXIT -ne 0 ]; then
-        echo "[ESLint] Linting failed. Please fix errors and try again."
+        echo "[ESLint] Linting failed (exit code $LINT_EXIT). Please fix errors and try again."
         exit 1
       fi
       echo "[ESLint] Lint check passed. ✔"
