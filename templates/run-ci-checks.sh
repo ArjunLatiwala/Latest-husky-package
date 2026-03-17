@@ -1,27 +1,20 @@
 #!/bin/sh
 
-# run-ci-checks.sh — Dynamic DevOps CI Checks
+# run-ci-checks.sh — Compulsory DevOps CI Checks
 # Used by Husky pre-push
+# Smoke tests and Newman tests ALWAYS run — never skipped.
 
 echo ""
-echo "--------------------------------------------------"
-echo "[CI Checks] Starting local CI pipeline"
-echo "--------------------------------------------------"
+echo "=================================================="
+echo "🚀 [CI Checks] Starting COMPULSORY local CI pipeline"
+echo "=================================================="
 
 # ---------------------------------------------------------------
-# Detect changed files
-# Case 1: Normal push — remote exists, diff against it
-# Case 2: Initial push — only 1 commit, no HEAD~1, use empty tree
-# Case 3: Local-only push — multiple commits, no remote yet
+# Detect changed files (informational only — never skips)
 # ---------------------------------------------------------------
 
 LOCAL=$(git rev-parse @ 2>/dev/null)
 REMOTE=$(git rev-parse @{u} 2>/dev/null)
-
-if [ "$REMOTE" != "" ] && [ "$LOCAL" = "$REMOTE" ]; then
-  echo "[CI Checks] No changes to push. Skipping."
-  exit 0
-fi
 
 if [ "$REMOTE" != "" ]; then
   CHANGED=$(git diff --name-only "$REMOTE" "$LOCAL" 2>/dev/null)
@@ -35,33 +28,16 @@ else
   fi
 fi
 
-if [ -z "$CHANGED" ]; then
-  echo "[CI Checks] No changed files detected. Skipping."
-  exit 0
+if [ -n "$CHANGED" ]; then
+  echo ""
+  echo "[CI Checks] Changed files detected:"
+  echo "$CHANGED" | sed "s/^/  -> /"
+else
+  echo "[CI Checks] No changed files detected (informational)."
 fi
 
 echo ""
-echo "[CI Checks] Changed files detected:"
-echo "$CHANGED" | sed "s/^/  -> /"
-
-# ---------------------------------------------------------------
-# Ignore trivial file types
-# ---------------------------------------------------------------
-
-SIGNIFICANT=$(echo "$CHANGED" | grep -Ev "\.md$|\.txt$|\.png$|\.jpg$|\.jpeg$|\.gif$|\.svg$|\.lock$|\.log$")
-
-if [ -z "$SIGNIFICANT" ]; then
-  echo "[CI Checks] Only docs/assets changed. Skipping heavy checks."
-  exit 0
-fi
-
-echo "[CI Checks] Starting checks..."
-
-# ---------------------------------------------------------------
-# Detect backend/API related changes
-# ---------------------------------------------------------------
-
-API_CHANGE=$(echo "$CHANGED" | grep -E "\.js$|\.ts$|\.jsx$|\.tsx$|package\.json|routes/|controllers/|services/|server/|api/")
+echo "[CI Checks] Starting compulsory checks..."
 
 # ---------------------------------------------------------------
 # Find Node project directory
@@ -80,7 +56,8 @@ find_project_dir() {
 PROJECT_DIR=$(find_project_dir)
 
 if [ "$PROJECT_DIR" = "none" ]; then
-  echo "[CI Checks] No package.json found. Skipping Node checks."
+  echo "⚠️  [CI Checks] No package.json found. Cannot run Node checks."
+  echo "[CI Checks] Tip: Ensure your project has a package.json."
   exit 0
 fi
 
@@ -93,20 +70,15 @@ cd "$PROJECT_DIR" || exit 0
 
 HAS_START=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.start?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 HAS_DEV=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.dev?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
-HAS_TEST=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.test?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
 # ---------------------------------------------------------------
-# Skip smoke tests if no backend/API change
+# COMPULSORY: Smoke Test — Always attempt server startup
 # ---------------------------------------------------------------
 
-if [ -z "$API_CHANGE" ]; then
-  echo "[CI Checks] No backend/API changes detected. Skipping smoke tests."
-  exit 0
-fi
-
-# ---------------------------------------------------------------
-# Determine start command
-# ---------------------------------------------------------------
+echo ""
+echo "=================================================="
+echo "🔥 [Smoke Tests] COMPULSORY — Attempting server startup..."
+echo "=================================================="
 
 START_CMD=""
 if [ "$HAS_START" = "yes" ]; then
@@ -115,98 +87,106 @@ elif [ "$HAS_DEV" = "yes" ]; then
   START_CMD="npm run dev"
 fi
 
-if [ -z "$START_CMD" ]; then
-  echo "[Smoke Tests] No start/dev script found. Skipping."
-  exit 0
-fi
-
-echo "[Smoke Tests] Starting server with: $START_CMD"
-
-NODE_MAJOR=$(node -v | cut -d. -f1 | tr -d v)
-if [ "$NODE_MAJOR" -ge 17 ]; then
-  export NODE_OPTIONS=--openssl-legacy-provider
-fi
-
-sh -c "$START_CMD" &
-SERVER_PID=$!
 SERVER_UP=0
+SERVER_PID=""
 
-# ---------------------------------------------------------------
-# Dynamic port detection
-# Priority: .env -> package.json scripts -> source files -> fallback
-# ---------------------------------------------------------------
-
-DETECTED_PORT=""
-
-# 1. Check .env
-if [ -f ".env" ]; then
-  DETECTED_PORT=$(grep -E "^PORT=" .env 2>/dev/null | cut -d= -f2 | tr -d "\t\r\n ")
-  if [ -n "$DETECTED_PORT" ]; then
-    echo "[Smoke Tests] Port found in .env: $DETECTED_PORT"
-  fi
-fi
-
-# 2. Check package.json scripts for PORT=XXXX
-if [ -z "$DETECTED_PORT" ]; then
-  DETECTED_PORT=$(node -e 'try{const p=require("./package.json");const s=JSON.stringify(p.scripts||{});const m=s.match(/PORT=([0-9]+)/);if(m)process.stdout.write(m[1])}catch(e){}' 2>/dev/null)
-  if [ -n "$DETECTED_PORT" ]; then
-    echo "[Smoke Tests] Port found in package.json: $DETECTED_PORT"
-  fi
-fi
-
-# 3. Scan source files for .listen(XXXX)
-if [ -z "$DETECTED_PORT" ]; then
-  DETECTED_PORT=$(grep -rE "\.listen\([0-9]" --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-dir=.git . 2>/dev/null | grep -oE "[0-9]{4,5}" | head -1)
-  if [ -n "$DETECTED_PORT" ]; then
-    echo "[Smoke Tests] Port found in source files: $DETECTED_PORT"
-  fi
-fi
-
-# 4. Build port scan list — detected port first, then common fallbacks
-if [ -n "$DETECTED_PORT" ]; then
-  PORT_LIST="$DETECTED_PORT 3000 3001 4000 4200 5000 5001 8000 8080 8081 9000 1337"
+if [ -z "$START_CMD" ]; then
+  echo "⚠️  [Smoke Tests] No start/dev script found in package.json."
+  echo "[Smoke Tests] Tip: Add a \"start\" or \"dev\" script to package.json."
+  echo "[Smoke Tests] Continuing to Newman tests..."
 else
-  echo "[Smoke Tests] No port detected — scanning common ports."
-  PORT_LIST="3000 3001 4000 4200 5000 5001 8000 8080 8081 9000 1337"
-fi
+  echo "[Smoke Tests] Starting server with: $START_CMD"
 
-# ---------------------------------------------------------------
-# Wait for server to start
-# ---------------------------------------------------------------
-
-for i in $(seq 1 30); do
-  if ! kill -0 $SERVER_PID 2>/dev/null; then
-    echo "[Smoke Tests] Server crashed early."
-    break
+  NODE_MAJOR=$(node -v | cut -d. -f1 | tr -d v)
+  if [ "$NODE_MAJOR" -ge 17 ]; then
+    export NODE_OPTIONS=--openssl-legacy-provider
   fi
-  for PORT_TRY in $PORT_LIST; do
-    if curl -sf http://localhost:$PORT_TRY >/dev/null 2>&1; then
-      PORT=$PORT_TRY
-      SERVER_UP=1
-      echo "[Smoke Tests] Server running on port $PORT"
-      break 2
-    fi
-  done
-  echo "[Smoke Tests] Waiting for server... ($i/30)"
-  sleep 1
-done
 
-if [ $SERVER_UP -eq 0 ]; then
-  echo "[Smoke Tests] Server did not start. Skipping tests."
-  kill $SERVER_PID 2>/dev/null
-  exit 0
+  sh -c "$START_CMD" &
+  SERVER_PID=$!
+
+  # ---------------------------------------------------------------
+  # Dynamic port detection
+  # ---------------------------------------------------------------
+
+  DETECTED_PORT=""
+
+  # 1. Check .env
+  if [ -f ".env" ]; then
+    DETECTED_PORT=$(grep -E "^PORT=" .env 2>/dev/null | cut -d= -f2 | tr -d "\t\r\n ")
+    if [ -n "$DETECTED_PORT" ]; then
+      echo "[Smoke Tests] Port found in .env: $DETECTED_PORT"
+    fi
+  fi
+
+  # 2. Check package.json scripts for PORT=XXXX
+  if [ -z "$DETECTED_PORT" ]; then
+    DETECTED_PORT=$(node -e 'try{const p=require("./package.json");const s=JSON.stringify(p.scripts||{});const m=s.match(/PORT=([0-9]+)/);if(m)process.stdout.write(m[1])}catch(e){}' 2>/dev/null)
+    if [ -n "$DETECTED_PORT" ]; then
+      echo "[Smoke Tests] Port found in package.json: $DETECTED_PORT"
+    fi
+  fi
+
+  # 3. Scan source files for .listen(XXXX)
+  if [ -z "$DETECTED_PORT" ]; then
+    DETECTED_PORT=$(grep -rE "\.listen\([0-9]" --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-dir=.git . 2>/dev/null | grep -oE "[0-9]{4,5}" | head -1)
+    if [ -n "$DETECTED_PORT" ]; then
+      echo "[Smoke Tests] Port found in source files: $DETECTED_PORT"
+    fi
+  fi
+
+  # 4. Build port scan list
+  if [ -n "$DETECTED_PORT" ]; then
+    PORT_LIST="$DETECTED_PORT 3000 3001 4000 4200 5000 5001 8000 8080 8081 9000 1337"
+  else
+    echo "[Smoke Tests] No port detected — scanning common ports."
+    PORT_LIST="3000 3001 4000 4200 5000 5001 8000 8080 8081 9000 1337"
+  fi
+
+  # ---------------------------------------------------------------
+  # Wait for server to start
+  # ---------------------------------------------------------------
+
+  for i in $(seq 1 30); do
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "⚠️  [Smoke Tests] Server process exited early."
+      break
+    fi
+    for PORT_TRY in $PORT_LIST; do
+      if curl -sf http://localhost:$PORT_TRY >/dev/null 2>&1; then
+        PORT=$PORT_TRY
+        SERVER_UP=1
+        echo "✅ [Smoke Tests] Server running on port $PORT"
+        break 2
+      fi
+    done
+    echo "[Smoke Tests] Waiting for server... ($i/30)"
+    sleep 1
+  done
+
+  if [ $SERVER_UP -eq 0 ]; then
+    echo "⚠️  [Smoke Tests] Server did not start within 30s."
+    echo "[Smoke Tests] Continuing to Newman tests (non-blocking)..."
+  else
+    echo "✅ [Smoke Tests] Server startup verified."
+  fi
 fi
 
 # ---------------------------------------------------------------
-# Newman API Tests — runs on every push including initial push
+# COMPULSORY: Newman API Tests — Always search and run
 # ---------------------------------------------------------------
 
-echo "[Newman] Searching for Postman collections..."
+echo ""
+echo "=================================================="
+echo "🧪 [Newman] COMPULSORY — Searching for Postman collections..."
+echo "=================================================="
 
 COLLECTIONS=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" -name "*.postman_collection.json" 2>/dev/null)
 
 if [ -z "$COLLECTIONS" ]; then
-  echo "[Newman] No collections found. Skipping."
+  echo "ℹ️  [Newman] No Postman collections (.postman_collection.json) found."
+  echo "[Newman] Tip: Add Postman collections to your project for API testing."
+  echo "[Newman] Skipping Newman tests (no collections to run)."
 else
   if ! command -v newman >/dev/null 2>&1; then
     echo "[Newman] Installing newman..."
@@ -241,17 +221,25 @@ else
   done
 
   if [ $NEWMAN_FAIL -ne 0 ]; then
-    echo "[Newman] API tests failed. Push blocked."
-    kill $SERVER_PID 2>/dev/null
+    echo "✖ [Newman] API tests failed. Push blocked."
+    if [ -n "$SERVER_PID" ]; then kill $SERVER_PID 2>/dev/null; fi
     exit 1
   fi
 
-  echo "[Newman] All collections passed ✔"
+  echo "✅ [Newman] All collections passed ✔"
 fi
 
-kill $SERVER_PID 2>/dev/null
+# ---------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------
 
-echo "[CI Checks] All checks completed."
-echo "--------------------------------------------------"
+if [ -n "$SERVER_PID" ]; then
+  kill $SERVER_PID 2>/dev/null
+fi
+
+echo ""
+echo "=================================================="
+echo "✅ [CI Checks] All compulsory checks completed."
+echo "=================================================="
 
 exit 0
