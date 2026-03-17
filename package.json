@@ -17,7 +17,7 @@
   "license": "MIT",
   "scripts": {
     "postinstall": "node ./bin/index.js install",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "test": "npx --no-install cs-setup check-hooks 2>/dev/null || true && node --test"
   },
   "dependencies": {
