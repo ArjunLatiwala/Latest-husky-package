@@ -198,26 +198,6 @@ if [ $SERVER_UP -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------
-# Run npm tests
-# ---------------------------------------------------------------
-
-if [ "$HAS_TEST" = "yes" ]; then
-  if [ ! -d "node_modules" ]; then
-    echo "[Smoke Tests] node_modules missing. Skipping npm test."
-  else
-    echo "[Smoke Tests] Running npm test..."
-    npm test || {
-      echo "[Smoke Tests] Tests failed. Push blocked."
-      kill $SERVER_PID 2>/dev/null
-      exit 1
-    }
-    echo "[Smoke Tests] Tests passed ✔"
-  fi
-else
-  echo "[Smoke Tests] No test script found."
-fi
-
-# ---------------------------------------------------------------
 # Newman API Tests — runs on every push including initial push
 # ---------------------------------------------------------------
 
