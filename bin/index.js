@@ -133,7 +133,7 @@ if (isPostInstall) {
         process.exit(0);
       }
       
-      logInfo('Verifying git hooks and configuration integrity...');
+      logInfo('\x1b[1mChecking git hooks and configuration integrity...\x1b[0m');
       
       // Always re-run these to ensure hooks are up-to-date and configs are present
       await installHusky(gitRoot);
