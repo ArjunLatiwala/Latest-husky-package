@@ -130,7 +130,7 @@ fi
 sh -c "$START_CMD" &
 SERVER_PID=$!
 SERVER_UP=0
-sleep 2
+
 # ---------------------------------------------------------------
 # Dynamic port detection
 # Priority: .env -> package.json scripts -> source files -> fallback

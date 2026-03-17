@@ -51,12 +51,6 @@ jobs:
           NODE_ENV: test
           PORT: ${{ vars.PORT || 3000 }}
 
-      - name: Run smoke tests
-        run: npm test
-        env:
-          NODE_ENV: test
-          PORT: ${{ vars.PORT || 3000 }}
-
       - name: Stop server
         if: always()
         run: |

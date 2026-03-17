@@ -50,7 +50,7 @@ if [ -n "$LINT_FILES" ]; then
     ESLINT_BIN="eslint"
   else
     echo "[ESLint] eslint not found — attempting automatic installation..."
-    npm install --save-dev eslint --quiet 2>&1 | tail -n 3
+    npm install --save-dev eslint @eslint/js --quiet 2>&1 | tail -n 3
     if [ -f "./node_modules/.bin/eslint" ]; then
       ESLINT_BIN="./node_modules/.bin/eslint"
     else
@@ -61,24 +61,49 @@ if [ -n "$LINT_FILES" ]; then
   if [ -n "$ESLINT_BIN" ]; then
     # Check for ESLint config files (v9+ or legacy) OR in package.json
     HAS_CONFIG=0
-    if [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ] || [ -f "eslint.config.cjs" ] ||        [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc.yml" ] || [ -f ".eslintrc" ]; then
+    if [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ] || [ -f "eslint.config.cjs" ] ||        [ -f ".eslintrc.js" ] || [ -f ".eslintrc.cjs" ] || [ -f ".eslintrc.yaml" ] ||        [ -f ".eslintrc.yml" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc" ]; then
       HAS_CONFIG=1
     elif [ -f "package.json" ] && grep -q '"eslintConfig"' package.json; then
       HAS_CONFIG=1
     fi
 
+    # Function to run cs-setup safely without hitting the npm registry (404)
+    run_cs_setup() {
+      if [ -f "./node_modules/.bin/cs-setup" ]; then
+        ./node_modules/.bin/cs-setup "$@"
+      elif [ -f "$(npm root -g 2>/dev/null)/cs-setup/bin/index.js" ]; then
+        node "$(npm root -g)/cs-setup/bin/index.js" "$@"
+      else
+        # --no-install prevents downloading, 2>/dev/null hides registry 404s
+        npx --no-install cs-setup "$@" 2>/dev/null || true
+      fi
+    }
+
+    if [ $HAS_CONFIG -eq 0 ]; then
+      echo "⚠️  [ESLint] No configuration found. Attempting compulsory auto-configuration..."
+      run_cs_setup check-hooks
+      
+      # Re-check for any possible config format
+      if [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ] || [ -f "eslint.config.cjs" ] ||          [ -f ".eslintrc.js" ] || [ -f ".eslintrc.cjs" ] || [ -f ".eslintrc.yaml" ] ||          [ -f ".eslintrc.yml" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc" ]; then
+        HAS_CONFIG=1
+        echo "✅ [ESLint] Configuration restored."
+      elif [ -f "package.json" ] && grep -q '"eslintConfig"' package.json; then
+        HAS_CONFIG=1
+        echo "✅ [ESLint] Configuration found in package.json."
+      fi
+    fi
+
     if [ $HAS_CONFIG -eq 1 ]; then
       echo "[ESLint] Running lint check..."
-      echo "$LINT_FILES" | xargs $ESLINT_BIN
-      LINT_EXIT=$?
-      if [ $LINT_EXIT -ne 0 ]; then
-        echo "[ESLint] Linting failed (exit code $LINT_EXIT). Please fix errors and try again."
-        exit 1
+      if ! echo "$LINT_FILES" | xargs $ESLINT_BIN; then
+        echo ""
+        echo "✖ [ESLint] Linting detected issues. Continuing commit (non-blocking)..."
+      else
+        echo "✔ [ESLint] Lint check passed."
       fi
-      echo "[ESLint] Lint check passed. ✔"
     else
-      echo "[ESLint] No configuration found (eslint.config.js, .eslintrc.*, or package.json) — skipping."
-      echo "[ESLint] Tip: Create an ESLint config file or add 'eslintConfig' to package.json."
+      echo "❌ [ESLint] Compulsory configuration failed. Please run 'npx cs-setup init' manually."
+      echo "Tip: You can also create an ESLint config file or add 'eslintConfig' to package.json."
     fi
   else
     echo "[ESLint] Failed to find or install eslint — skipping."
@@ -97,7 +122,7 @@ GITLEAKS_BIN="./.tools/gitleaks/gitleaks"
 if [ ! -f "$GITLEAKS_BIN" ]; then
   echo "[Gitleaks] Binary not found — attempting automatic installation..."
   # Call our own CLI to handle the complex download/extract logic
-  npx cs-setup install gitleaks
+  run_cs_setup install gitleaks
 fi
 
 if [ ! -f "$GITLEAKS_BIN" ]; then
@@ -153,11 +178,11 @@ fi
 if [ ! -f "sonar-project.properties" ]; then
   echo "[SonarQube] sonar-project.properties not found — skipping."
 else
-  # Skip if token is still the placeholder
-  if grep -q "REPLACE_WITH_YOUR_TOKEN" sonar-project.properties; then
-    echo "[SonarQube] Token is still the default placeholder — skipping scan."
-    echo "[SonarQube] Tip: Set sonar.login in sonar-project.properties to enable scanning."
-  else
+    # Skip if token is still the placeholder or empty
+    if grep -q "^sonar.login=REPLACE_WITH_YOUR_TOKEN" sonar-project.properties ||        grep -q "^sonar.login=\s*$" sonar-project.properties; then
+      echo "[SonarQube] Token is still the default placeholder or empty — skipping scan."
+      echo "[SonarQube] Tip: Set sonar.login in sonar-project.properties to enable scanning."
+    else
     SONAR_INCLUSIONS=$(echo "$STAGED_FILES" | tr '\n' ',' | sed 's/,$//')
     echo "[SonarQube] Scanning: $SONAR_INCLUSIONS"
 

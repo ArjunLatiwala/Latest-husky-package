@@ -149,7 +149,6 @@ if (isPostInstall) {
 
       await setupESLintConfig();
       await setupSonarProperties();
-
       logSuccess('Git hooks and configuration verified/restored.');
       process.exit(0);
     }

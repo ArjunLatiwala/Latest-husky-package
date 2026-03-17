@@ -1,4 +1,24 @@
 #!/bin/sh
 
 # Pre-push hook — runs from git root
-./scripts/run-ci-checks.sh
+
+# Function to run cs-setup safely without hitting the npm registry (404)
+run_cs_setup() {
+  if [ -f "./node_modules/.bin/cs-setup" ]; then
+    ./node_modules/.bin/cs-setup "$@"
+  elif [ -f "$(npm root -g 2>/dev/null)/cs-setup/bin/index.js" ]; then
+    node "$(npm root -g)/cs-setup/bin/index.js" "$@"
+  else
+    # --no-install prevents downloading, 2>/dev/null hides registry 404s
+    npx --no-install cs-setup "$@" 2>/dev/null || true
+  fi
+}
+
+# Ensure hooks and scripts are fresh
+run_cs_setup check-hooks
+
+if [ -f "./scripts/run-ci-checks.sh" ]; then
+  ./scripts/run-ci-checks.sh
+else
+  echo "[CI Checks] scripts/run-ci-checks.sh not found after check-hooks. Skipping."
+fi
