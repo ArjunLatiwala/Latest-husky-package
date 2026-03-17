@@ -139,6 +139,13 @@ if (isPostInstall) {
       await installHusky(gitRoot);
       await setupPreCommitHook(gitRoot);
       await setupPrePushHook(gitRoot);
+      
+      // Ensure tools are installed
+      const { installSonarScanner } = require('../lib/sonarqube');
+      const { installDevDependency } = require('../lib/packageManager');
+      await installSonarScanner();
+      await installDevDependency('eslint');
+
       await setupESLintConfig();
       await setupSonarProperties();
       
