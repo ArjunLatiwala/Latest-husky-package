@@ -17,7 +17,7 @@
   "license": "MIT",
   "scripts": {
     "postinstall": "node ./bin/index.js install",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "test": "node --test"
   },
   "dependencies": {
