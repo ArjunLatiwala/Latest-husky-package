@@ -7,18 +7,24 @@ if [ -z "$ALL_STAGED" ]; then
   echo "No changed files detected. Skipping checks."
   exit 0
 fi
+echo "[Git Diff] All staged files (git root):"
+echo "$ALL_STAGED" | while IFS= read -r FILE; do
+  echo "  -> $FILE"
+done
+
 
 STAGED_FILES="$ALL_STAGED"
+
+
+echo "[Git Diff] Staged files in project root (prefix=):"
+echo "$STAGED_FILES" | while IFS= read -r FILE; do
+  echo "  -> $FILE"
+done
 
 if [ -z "$STAGED_FILES" ]; then
   echo "No staged files in this project directory. Skipping checks."
   exit 0
 fi
-
-echo "[Git Diff] Changed files in this commit:"
-echo "$STAGED_FILES" | while IFS= read -r FILE; do
-  echo "  -> $FILE"
-done
 
 # ---------------------------------------------------------------
 # ESLint — Auto-installs if missing, blocks commit only if lint fails
@@ -26,8 +32,8 @@ done
 echo ""
 echo "[ESLint] Checking staged files for JS/TS..."
 
-# Use grep -E for extended regex, ensure we catch extensions correctly
-LINT_FILES=$(echo "$STAGED_FILES" | grep -E "\.(js|jsx|ts|tsx|mjs|cjs)$" || true)
+# Use grep -iE for case-insensitive and extended regex
+LINT_FILES=$(echo "$STAGED_FILES" | grep -iE "\.(js|jsx|ts|tsx|mjs|cjs)$" || true)
 
 if [ -n "$LINT_FILES" ]; then
   echo "[ESLint] Files found for linting:"
@@ -37,18 +43,32 @@ else
 fi
 
 if [ -n "$LINT_FILES" ]; then
-  if [ ! -f "./node_modules/.bin/eslint" ]; then
-    echo "[ESLint] eslint not found — installing locally..."
-    npm install --save-dev eslint --quiet 2>&1 | tail -n 3
-  fi
-
+  # Check for eslint in node_modules or global
   if [ -f "./node_modules/.bin/eslint" ]; then
     ESLINT_BIN="./node_modules/.bin/eslint"
-    
-    # Check for ESLint config files (v9+ or legacy)
+  elif command -v eslint >/dev/null 2>&1; then
+    ESLINT_BIN="eslint"
+  else
+    echo "[ESLint] eslint not found — attempting automatic installation..."
+    npm install --save-dev eslint --quiet 2>&1 | tail -n 3
+    if [ -f "./node_modules/.bin/eslint" ]; then
+      ESLINT_BIN="./node_modules/.bin/eslint"
+    else
+      ESLINT_BIN=""
+    fi
+  fi
+
+  if [ -n "$ESLINT_BIN" ]; then
+    # Check for ESLint config files (v9+ or legacy) OR in package.json
+    HAS_CONFIG=0
     if [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ] || [ -f "eslint.config.cjs" ] ||        [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc.yml" ] || [ -f ".eslintrc" ]; then
+      HAS_CONFIG=1
+    elif [ -f "package.json" ] && grep -q '"eslintConfig"' package.json; then
+      HAS_CONFIG=1
+    fi
+
+    if [ $HAS_CONFIG -eq 1 ]; then
       echo "[ESLint] Running lint check..."
-      # Use xargs carefully, ensure we pass the found files
       echo "$LINT_FILES" | xargs $ESLINT_BIN
       LINT_EXIT=$?
       if [ $LINT_EXIT -ne 0 ]; then
@@ -57,10 +77,12 @@ if [ -n "$LINT_FILES" ]; then
       fi
       echo "[ESLint] Lint check passed. ✔"
     else
-      echo "[ESLint] No configuration file found — skipping lint check."
+      echo "[ESLint] No configuration found (eslint.config.js, .eslintrc.*, or package.json) — skipping."
+      echo "[ESLint] Tip: Create an ESLint config file or add 'eslintConfig' to package.json."
     fi
   else
-    echo "[ESLint] Failed to install eslint — skipping (check your connection)."
+    echo "[ESLint] Failed to find or install eslint — skipping."
+    echo "[ESLint] Tip: Run 'npm install --save-dev eslint' manually."
   fi
 fi
 
@@ -134,7 +156,7 @@ else
   # Skip if token is still the placeholder
   if grep -q "REPLACE_WITH_YOUR_TOKEN" sonar-project.properties; then
     echo "[SonarQube] Token is still the default placeholder — skipping scan."
-    echo "[SonarQube] Tip: Set sonar.token in sonar-project.properties to enable scanning."
+    echo "[SonarQube] Tip: Set sonar.login in sonar-project.properties to enable scanning."
   else
     SONAR_INCLUSIONS=$(echo "$STAGED_FILES" | tr '\n' ',' | sed 's/,$//')
     echo "[SonarQube] Scanning: $SONAR_INCLUSIONS"

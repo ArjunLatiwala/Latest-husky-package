@@ -45,6 +45,7 @@ const { setupPrePushHook, setupCIScript,
   ensurePackageLock } = require('../lib/ci');
 const { isGitRepo } = require('../lib/git');
 const { logInfo, logError, logSuccess } = require('../lib/logger');
+const { fixInvalidAliases } = require('../lib/fixer');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 2 — Parse command and detect context
@@ -108,6 +109,11 @@ if (isPostInstall) {
     }
 
     logInfo('cs-setup: Initializing secure git hooks...');
+    
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AUTO-FIX: Handle invalid npm aliases (e.g. rolldown-vite@7.2.2)
+    // ─────────────────────────────────────────────────────────────────────────────
+    await fixInvalidAliases();
 
     const { found, gitRoot, projectRoot } = await isGitRepo();
 

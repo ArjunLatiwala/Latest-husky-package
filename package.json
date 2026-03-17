@@ -16,7 +16,9 @@
   "author": "Your Name",
   "license": "MIT",
   "scripts": {
-    "postinstall": "node ./bin/index.js install"
+    "postinstall": "node ./bin/index.js install",
+    "prepare": "husky",
+    "test": "node --test"
   },
   "dependencies": {
     "chalk": "^4.1.2",
@@ -36,5 +38,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/HUSAINTRIVEDI52/package_test.git"
+  },
+  "devDependencies": {
+    "eslint": "^10.0.3"
   }
 }
