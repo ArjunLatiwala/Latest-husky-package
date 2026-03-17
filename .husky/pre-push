@@ -13,44 +13,14 @@ if [ ! -f "./scripts/run-ci-checks.sh" ]; then
   cat > ./scripts/run-ci-checks.sh << 'CISCRIPT_EOF'
 #!/bin/sh
 
-# run-ci-checks.sh — Compulsory DevOps CI Checks
+# run-ci-checks.sh — Smoke and Newman Tests Only
 # Used by Husky pre-push
-# Smoke tests and Newman tests ALWAYS run — never skipped.
+# Only smoke tests and Newman tests should run
 
 echo ""
 echo "=================================================="
-echo "🚀 [CI Checks] Starting COMPULSORY local CI pipeline"
+echo "🚀 [CI Checks] Starting Smoke & Newman Tests"
 echo "=================================================="
-
-# ---------------------------------------------------------------
-# Detect changed files (informational only — never skips)
-# ---------------------------------------------------------------
-
-LOCAL=$(git rev-parse @ 2>/dev/null)
-REMOTE=$(git rev-parse @{u} 2>/dev/null)
-
-if [ "$REMOTE" != "" ]; then
-  CHANGED=$(git diff --name-only "$REMOTE" "$LOCAL" 2>/dev/null)
-else
-  if git rev-parse HEAD~1 >/dev/null 2>&1; then
-    CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null)
-  else
-    EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-    CHANGED=$(git diff-tree --no-commit-id -r --name-only "$EMPTY_TREE" HEAD 2>/dev/null)
-    echo "[CI Checks] Initial push detected — scanning all committed files."
-  fi
-fi
-
-if [ -n "$CHANGED" ]; then
-  echo ""
-  echo "[CI Checks] Changed files detected:"
-  echo "$CHANGED" | sed "s/^/  -> /"
-else
-  echo "[CI Checks] No changed files detected (informational)."
-fi
-
-echo ""
-echo "[CI Checks] Starting compulsory checks..."
 
 # ---------------------------------------------------------------
 # Find Node project directory
@@ -85,12 +55,12 @@ HAS_START=$(node -e "try{const p=require('./package.json');console.log(p.scripts
 HAS_DEV=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.dev?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
 # ---------------------------------------------------------------
-# COMPULSORY: Smoke Test — Always attempt server startup
+# SMOKE TEST: Server startup verification
 # ---------------------------------------------------------------
 
 echo ""
 echo "=================================================="
-echo "🔥 [Smoke Tests] COMPULSORY — Attempting server startup..."
+echo "🔥 [Smoke Tests] Starting server verification..."
 echo "=================================================="
 
 START_CMD=""
@@ -186,12 +156,12 @@ else
 fi
 
 # ---------------------------------------------------------------
-# COMPULSORY: Newman API Tests — Always search and run
+# NEWMAN TESTS: API testing
 # ---------------------------------------------------------------
 
 echo ""
 echo "=================================================="
-echo "🧪 [Newman] COMPULSORY — Searching for Postman collections..."
+echo "🧪 [Newman] Starting API tests..."
 echo "=================================================="
 
 COLLECTIONS=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" -name "*.postman_collection.json" 2>/dev/null)
@@ -252,7 +222,7 @@ fi
 
 echo ""
 echo "=================================================="
-echo "✅ [CI Checks] All compulsory checks completed."
+echo "✅ [CI Checks] Smoke & Newman tests completed."
 echo "=================================================="
 
 exit 0
