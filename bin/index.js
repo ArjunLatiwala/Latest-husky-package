@@ -149,6 +149,8 @@ if (isPostInstall) {
 
       await setupESLintConfig();
       await setupSonarProperties();
+      await setupCIScript(gitRoot);
+      await setupCIWorkflow();
       
       logSuccess('Git hooks and configuration verified/restored.');
       process.exit(0);
