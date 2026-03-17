@@ -132,14 +132,14 @@ if (isPostInstall) {
         logInfo('Not a git repository — skipping check-hooks.');
         process.exit(0);
       }
-      
+
       logInfo('\x1b[1mChecking git hooks and configuration integrity...\x1b[0m');
-      
+
       // Always re-run these to ensure hooks are up-to-date and configs are present
       await installHusky(gitRoot);
       await setupPreCommitHook(gitRoot);
       await setupPrePushHook(gitRoot);
-      
+
       // Ensure tools are installed
       const { installSonarScanner } = require('../lib/sonarqube');
       const { installDevDependency } = require('../lib/packageManager');
@@ -149,13 +149,13 @@ if (isPostInstall) {
 
       await setupESLintConfig();
       await setupSonarProperties();
-      
+
       logSuccess('Git hooks and configuration verified/restored.');
       process.exit(0);
     }
 
     logInfo('cs-setup: Initializing secure git hooks...');
-    
+
     // ─────────────────────────────────────────────────────────────────────────────
     // AUTO-FIX: Handle invalid npm aliases (e.g. rolldown-vite@7.2.2)
     // ─────────────────────────────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ if (isPostInstall) {
 
     await ensurePackageLock();
     await require('../lib/ci').ensureProjectScripts();
-    await setupCIScript(gitRoot);
+    await setupCIScript(projectRoot);
     await setupCIWorkflow();
     await setupPrePushHook(gitRoot);
     logSuccess('Pre-push hook + GitHub Actions workflow ready.');
