@@ -52,10 +52,10 @@ const { fixInvalidAliases } = require('../lib/fixer');
 // STEP 2 — Parse command and detect context
 // ─────────────────────────────────────────────────────────────────────────────
 const command = process.argv[2];
-const validCommands = ['init', 'install'];
+const validCommands = ['init', 'install', 'check-hooks'];
 
 if (command && !validCommands.includes(command)) {
-  console.log('Usage: cs-setup [init|install]');
+  console.log('Usage: cs-setup [init|install|check-hooks]');
   process.exit(0);
 }
 
@@ -109,14 +109,31 @@ if (isPostInstall) {
       process.exit(0);
     }
 
+    const { found, gitRoot, projectRoot } = await isGitRepo();
+
+    if (command === 'check-hooks') {
+      if (!found) process.exit(0); // Not a git repo, nothing to check/heal
+      
+      const huskyDir = path.join(gitRoot, '.husky');
+      const preCommit = path.join(huskyDir, 'pre-commit');
+      const prePush = path.join(huskyDir, 'pre-push');
+
+      if (!fs.existsSync(huskyDir) || !fs.existsSync(preCommit) || !fs.existsSync(prePush)) {
+        logInfo('Git hooks missing or broken — re-initializing...');
+        await installHusky(gitRoot);
+        await setupPreCommitHook(gitRoot);
+        await setupPrePushHook(gitRoot);
+        logSuccess('Git hooks restored.');
+      }
+      process.exit(0);
+    }
+
     logInfo('cs-setup: Initializing secure git hooks...');
     
     // ─────────────────────────────────────────────────────────────────────────────
     // AUTO-FIX: Handle invalid npm aliases (e.g. rolldown-vite@7.2.2)
     // ─────────────────────────────────────────────────────────────────────────────
     await fixInvalidAliases();
-
-    const { found, gitRoot, projectRoot } = await isGitRepo();
 
     if (!found) {
       logError('Not inside a git repository — skipping setup.');
