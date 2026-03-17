@@ -145,6 +145,47 @@ detect_server_port() {
 }
 
 # ---------------------------------------------------------------
+# Port Cleanup
+# ---------------------------------------------------------------
+
+kill_processes_on_port() {
+    local port="$1"
+    if [ -z "$port" ]; then
+        return 0
+    fi
+    
+    log_info "Checking for processes on port $port..."
+    
+    # Find PIDs using the port (try lsof first, then netstat as fallback)
+    local pids=""
+    if command -v lsof >/dev/null 2>&1; then
+        pids=$(lsof -ti:$port 2>/dev/null || true)
+    elif command -v netstat >/dev/null 2>&1; then
+        pids=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | grep -E '^[0-9]+$' || true)
+    else
+        log_warning "Neither lsof nor netstat available, cannot check port $port"
+        return 0
+    fi
+    
+    if [ -n "$pids" ]; then
+        log_warning "Found processes on port $port: $pids"
+        for pid in $pids; do
+            log_info "Killing process $pid on port $port"
+            kill "$pid" 2>/dev/null || true
+            sleep 1
+            # Force kill if still running
+            if kill -0 "$pid" 2>/dev/null; then
+                log_info "Force killing process $pid"
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        done
+        sleep 2  # Give port time to be released
+    else
+        log_info "No processes found on port $port"
+    fi
+}
+
+# ---------------------------------------------------------------
 # Server Health Check
 # ---------------------------------------------------------------
 
@@ -223,6 +264,28 @@ run_smoke_tests() {
     
     log_info "Starting server with: $start_cmd"
     
+    # Detect server port first
+    local detected_port=$(detect_server_port)
+    
+    # Kill any existing processes on detected/default ports
+    if [ -n "$detected_port" ]; then
+        kill_processes_on_port "$detected_port"
+    else
+        # Check common ports and kill any processes found
+        for port in 3000 3001 8000 8080 5000 4000 4200 9000 1337; do
+            local port_in_use=""
+            if command -v lsof >/dev/null 2>&1; then
+                port_in_use=$(lsof -ti:$port 2>/dev/null || true)
+            elif command -v netstat >/dev/null 2>&1; then
+                port_in_use=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | grep -E '^[0-9]+$' || true)
+            fi
+            if [ -n "$port_in_use" ]; then
+                kill_processes_on_port "$port"
+                break  # Only clean the first occupied port
+            fi
+        done
+    fi
+    
     # Set Node.js options for older projects
     local node_version=$(node -v | cut -d. -f1 | tr -d 'v')
     if [ "$node_version" -ge 17 ]; then
@@ -232,9 +295,6 @@ run_smoke_tests() {
     # Start server in background
     $start_cmd > /tmp/smoke-test-server.log 2>&1 &
     SERVER_PID=$!
-    
-    # Detect server port
-    local detected_port=$(detect_server_port)
     
     # Wait for server to be ready
     if wait_for_server "$detected_port"; then
