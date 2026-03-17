@@ -1,4 +1,11 @@
 #!/bin/sh
+# ---------------------------------------------------------------
+# Base directories
+# ---------------------------------------------------------------
+# Husky runs hooks from the git root.
+GIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+HOOK_DIR="$GIT_ROOT" # Alias for convenience
+
 
 # Collect staged files (git always returns paths relative to git root)
 ALL_STAGED=$(git diff --cached --name-only --diff-filter=ACM)
@@ -67,15 +74,23 @@ if [ -n "$LINT_FILES" ]; then
       HAS_CONFIG=1
     fi
 
-    # Function to run cs-setup safely without hitting the npm registry (404)
+    # Function to run cs-setup safely
     run_cs_setup() {
+      # 1. Check local node_modules
       if [ -f "./node_modules/.bin/cs-setup" ]; then
         ./node_modules/.bin/cs-setup "$@"
+      # 2. Check parent node_modules (monorepos)
+      elif [ -f "../node_modules/.bin/cs-setup" ]; then
+        ../node_modules/.bin/cs-setup "$@"
+      # 3. Check git root node_modules
+      elif [ -f "$HOOK_DIR/node_modules/.bin/cs-setup" ]; then
+        "$HOOK_DIR/node_modules/.bin/cs-setup" "$@"
+      # 4. Check global
       elif [ -f "$(npm root -g 2>/dev/null)/cs-setup/bin/index.js" ]; then
         node "$(npm root -g)/cs-setup/bin/index.js" "$@"
       else
-        # --no-install prevents downloading, 2>/dev/null hides registry 404s
-        npx --no-install cs-setup "$@" 2>/dev/null || true
+        # 5. Fallback to npx (only --no-install to avoid registry issues)
+        npx --no-install cs-setup "$@"
       fi
     }
 
