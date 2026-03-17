@@ -62,7 +62,9 @@ if (command && !validCommands.includes(command)) {
 const isPostInstall = process.env.npm_lifecycle_event === 'postinstall';
 const initCwd = process.env.INIT_CWD || process.env.npm_config_local_prefix;
 
-console.log(`[cs-setup] command=${command}, isPostInstall=${isPostInstall}, initCwd=${initCwd}`);
+if (isPostInstall) {
+  console.log('\n\x1b[1m\x1b[34m[cs-setup] 🚀 Automatic setup starting...\x1b[0m');
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 3 — Guard: skip if npm is installing OUR OWN deps (nested postinstall)
@@ -88,26 +90,25 @@ if (isPostInstall) {
     if (currentDir.includes('node_modules')) {
       const potentialProjectDir = path.resolve(currentDir, '..', '..');
       if (fs.existsSync(path.join(potentialProjectDir, 'package.json'))) {
-        logInfo(`INIT_CWD missing, but node_modules detected. Switching to: ${potentialProjectDir}`);
-        process.chdir(potentialProjectDir);
-      } else {
-        console.error('[cs-setup] Could not determine project directory. Run `npx cs-setup init` manually.');
-        process.exit(0);
+        logInfo(`INIT_CWD missing, but local node_modules detected. Assuming project root: ${potentialProjectDir}`);
+        projectDir = potentialProjectDir;
       }
-    } else {
-      console.error('[cs-setup] Could not determine project directory. Run `npx cs-setup init` manually.');
-      process.exit(0);
     }
-  } else {
-    // cd into the user's project
-    if (process.cwd() !== projectDir) {
-      try {
-        process.chdir(projectDir);
-        logInfo(`Switched to project directory: ${projectDir}`);
-      } catch (e) {
-        console.error(`[cs-setup] Failed to switch to project directory: ${e.message}`);
-        process.exit(0);
-      }
+  }
+
+  if (!projectDir) {
+    logError('Could not determine project directory. Run `npx cs-setup init` manually.');
+    process.exit(0);
+  }
+
+  // cd into the user's project
+  if (process.cwd() !== projectDir) {
+    try {
+      process.chdir(projectDir);
+      logInfo(`Target project: ${projectDir}`);
+    } catch (e) {
+      logError(`Failed to switch to project directory: ${e.message}`);
+      process.exit(0);
     }
   }
 }
@@ -127,28 +128,21 @@ if (isPostInstall) {
     const { found, gitRoot, projectRoot } = await isGitRepo();
 
     if (command === 'check-hooks') {
-      if (!found) process.exit(0); // Not a git repo, nothing to check/heal
-      
-      const huskyDir = path.join(gitRoot, '.husky');
-      const preCommit = path.join(huskyDir, 'pre-commit');
-      const prePush = path.join(huskyDir, 'pre-push');
-
-      let healed = false;
-      if (!fs.existsSync(huskyDir) || !fs.existsSync(preCommit) || !fs.existsSync(prePush)) {
-        logInfo('Git hooks missing or broken — re-initializing...');
-        await installHusky(gitRoot);
-        await setupPreCommitHook(gitRoot);
-        await setupPrePushHook(gitRoot);
-        healed = true;
+      if (!found) {
+        logInfo('Not a git repository — skipping check-hooks.');
+        process.exit(0);
       }
-
-      // Also ensure ESLint and Sonar are configured
+      
+      logInfo('Verifying git hooks and configuration integrity...');
+      
+      // Always re-run these to ensure hooks are up-to-date and configs are present
+      await installHusky(gitRoot);
+      await setupPreCommitHook(gitRoot);
+      await setupPrePushHook(gitRoot);
       await setupESLintConfig();
       await setupSonarProperties();
-
-      if (healed) {
-        logSuccess('Git hooks restored.');
-      }
+      
+      logSuccess('Git hooks and configuration verified/restored.');
       process.exit(0);
     }
 
