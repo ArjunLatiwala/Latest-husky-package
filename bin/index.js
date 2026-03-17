@@ -62,6 +62,8 @@ if (command && !validCommands.includes(command)) {
 const isPostInstall = process.env.npm_lifecycle_event === 'postinstall';
 const initCwd = process.env.INIT_CWD || process.env.npm_config_local_prefix;
 
+console.log(`[cs-setup] command=${command}, isPostInstall=${isPostInstall}, initCwd=${initCwd}`);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 3 — Guard: skip if npm is installing OUR OWN deps (nested postinstall)
 //
@@ -82,17 +84,30 @@ if (isPostInstall) {
   }
 
   if (!projectDir) {
-    console.error('[cs-setup] Could not determine project directory. Run `npx cs-setup init` manually.');
-    process.exit(0);
-  }
-
-  // cd into the user's project
-  if (process.cwd() !== projectDir) {
-    try {
-      process.chdir(projectDir);
-    } catch (e) {
-      console.error(`[cs-setup] Failed to switch to project directory: ${e.message}`);
+    // Attempt fallback: if we're in node_modules/cs-setup, projectDir is 2 levels up
+    if (currentDir.includes('node_modules')) {
+      const potentialProjectDir = path.resolve(currentDir, '..', '..');
+      if (fs.existsSync(path.join(potentialProjectDir, 'package.json'))) {
+        logInfo(`INIT_CWD missing, but node_modules detected. Switching to: ${potentialProjectDir}`);
+        process.chdir(potentialProjectDir);
+      } else {
+        console.error('[cs-setup] Could not determine project directory. Run `npx cs-setup init` manually.');
+        process.exit(0);
+      }
+    } else {
+      console.error('[cs-setup] Could not determine project directory. Run `npx cs-setup init` manually.');
       process.exit(0);
+    }
+  } else {
+    // cd into the user's project
+    if (process.cwd() !== projectDir) {
+      try {
+        process.chdir(projectDir);
+        logInfo(`Switched to project directory: ${projectDir}`);
+      } catch (e) {
+        console.error(`[cs-setup] Failed to switch to project directory: ${e.message}`);
+        process.exit(0);
+      }
     }
   }
 }
