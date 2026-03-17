@@ -189,7 +189,7 @@ if (isPostInstall) {
     await setupCIScript(projectRoot);
     await setupCIWorkflow();
     await setupPrePushHook(gitRoot);
-    logSuccess('Pre-push hook + GitHub Actions workflow ready.');
+    logSuccess('Pre-push hook with smoke & Newman tests ready.');
 
   } catch (err) {
     logError(`cs-setup failed: ${err.message}`);
