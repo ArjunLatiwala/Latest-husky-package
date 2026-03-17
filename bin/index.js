@@ -145,6 +145,7 @@ if (isPostInstall) {
       const { installDevDependency } = require('../lib/packageManager');
       await installSonarScanner();
       await installDevDependency('eslint');
+      await installDevDependency('@eslint/js');
 
       await setupESLintConfig();
       await setupSonarProperties();
@@ -177,6 +178,7 @@ if (isPostInstall) {
     await installGitleaks();
     await installSonarScanner();
     await installDevDependency('eslint');
+    await installDevDependency('@eslint/js');
     await setupESLintConfig();
     await setupSonarProperties();
     await setupPreCommitHook(gitRoot);
