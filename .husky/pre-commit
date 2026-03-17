@@ -89,14 +89,14 @@ if [ -n "$LINT_FILES" ]; then
       elif [ -f "$(npm root -g 2>/dev/null)/cs-setup/bin/index.js" ]; then
         node "$(npm root -g)/cs-setup/bin/index.js" "$@"
       else
-        # 5. Fallback to npx (only --no-install to avoid registry issues)
-        npx --no-install cs-setup "$@"
+        echo "[cs-setup] Binary not found locally. Run 'npx cs-setup init' to set up."
+        return 1
       fi
     }
 
     if [ $HAS_CONFIG -eq 0 ]; then
       echo "⚠️  [ESLint] No configuration found. Attempting compulsory auto-configuration..."
-      run_cs_setup check-hooks
+      run_cs_setup check-hooks || true
       
       # Re-check for any possible config format
       if [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ] || [ -f "eslint.config.cjs" ] ||          [ -f ".eslintrc.js" ] || [ -f ".eslintrc.cjs" ] || [ -f ".eslintrc.yaml" ] ||          [ -f ".eslintrc.yml" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc" ]; then
