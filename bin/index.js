@@ -40,6 +40,7 @@ const { installHusky } = require('../lib/husky');
 const { installGitleaks } = require('../lib/gitleaks');
 const { installSonarScanner, setupSonarProperties } = require('../lib/sonarqube');
 const { setupPreCommitHook } = require('../lib/hooks');
+const { setupESLintConfig } = require('../lib/eslint');
 const { setupPrePushHook, setupCIScript,
   setupCIWorkflow, validateProject,
   ensurePackageLock } = require('../lib/ci');
@@ -134,6 +135,7 @@ if (isPostInstall) {
     await installGitleaks();
     await installSonarScanner();
     await installDevDependency('eslint');
+    await setupESLintConfig();
     await setupSonarProperties();
     await setupPreCommitHook(gitRoot);
     logSuccess('Husky + Gitleaks + SonarQube pre-commit hook ready.');
