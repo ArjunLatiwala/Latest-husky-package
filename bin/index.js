@@ -118,11 +118,20 @@ if (isPostInstall) {
       const preCommit = path.join(huskyDir, 'pre-commit');
       const prePush = path.join(huskyDir, 'pre-push');
 
+      let healed = false;
       if (!fs.existsSync(huskyDir) || !fs.existsSync(preCommit) || !fs.existsSync(prePush)) {
         logInfo('Git hooks missing or broken — re-initializing...');
         await installHusky(gitRoot);
         await setupPreCommitHook(gitRoot);
         await setupPrePushHook(gitRoot);
+        healed = true;
+      }
+
+      // Also ensure ESLint and Sonar are configured
+      await setupESLintConfig();
+      await setupSonarProperties();
+
+      if (healed) {
         logSuccess('Git hooks restored.');
       }
       process.exit(0);
