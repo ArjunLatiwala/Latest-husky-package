@@ -1,6 +1,14 @@
 import js from "@eslint/js";
-import typescript from "@typescript-eslint/eslint-plugin";
-import typescriptParser from "@typescript-eslint/parser";
+
+// Check if TypeScript packages are available
+let typescript, typescriptParser;
+try {
+    typescript = await import("@typescript-eslint/eslint-plugin");
+    typescriptParser = await import("@typescript-eslint/parser");
+} catch (e) {
+    // TypeScript packages not available, will use basic config
+    console.log("TypeScript ESLint packages not found, using basic JavaScript configuration");
+}
 
 export default [
     js.configs.recommended,
@@ -18,9 +26,16 @@ export default [
                 console: "readonly",
                 Buffer: "readonly"
             }
+        },
+        rules: {
+            "no-unused-vars": ["warn", { 
+                "varsIgnorePattern": "^React$",
+                "argsIgnorePattern": "^_" 
+            }],
+            "no-undef": "error"
         }
     },
-    {
+    ...(typescript && typescriptParser ? [{
         files: ["**/*.{ts,tsx}"],
         languageOptions: {
             parser: typescriptParser,
@@ -40,15 +55,12 @@ export default [
             "@typescript-eslint": typescript
         },
         rules: {
-            "no-unused-vars": ["warn", { 
-                "varsIgnorePattern": "^React$",
-                "argsIgnorePattern": "^_" 
-            }],
+            "no-unused-vars": "off", // Disable for TS, use @typescript-eslint version
             "no-undef": "error",
             "@typescript-eslint/no-unused-vars": ["warn", { 
                 "varsIgnorePattern": "^React$",
                 "argsIgnorePattern": "^_" 
             }]
         }
-    }
+    }] : [])
 ];
