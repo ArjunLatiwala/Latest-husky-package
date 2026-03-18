@@ -248,6 +248,39 @@ wait_for_server() {
 # Smoke Tests
 # ---------------------------------------------------------------
 
+# Detect if this is a CLI/utility package vs a server package
+detect_project_category() {
+    if [ ! -f "package.json" ]; then
+        echo "unknown"
+        return
+    fi
+    
+    # Check for CLI indicators
+    if grep -q '"bin"' package.json 2>/dev/null; then
+        echo "cli"
+        return
+    fi
+    
+    # Check for server frameworks
+    if grep -q -E '"(express|fastify|koa|hapi|sails|loopback)"' package.json 2>/dev/null; then
+        echo "server"
+        return
+    fi
+    
+    # Check for frontend frameworks
+    if grep -q -E '"(react|vue|angular|next|nuxt|svelte)"' package.json 2>/dev/null; then
+        echo "frontend"
+        return
+    fi
+    
+    # Default to server if start scripts exist
+    if npm run 2>/dev/null | grep -E "^\s*(start|dev|serve)" >/dev/null; then
+        echo "server"
+    else
+        echo "utility"
+    fi
+}
+
 run_smoke_tests() {
     echo ""
     echo "=================================================="
@@ -259,6 +292,22 @@ run_smoke_tests() {
         log_warning "No package.json found, skipping smoke tests"
         return 0
     fi
+    
+    # Detect project category
+    local project_category=$(detect_project_category)
+    log_info "Project category detected: $project_category"
+    
+    # Skip smoke tests for CLI/utility packages
+    case "$project_category" in
+        "cli")
+            log_info "CLI package detected - skipping smoke tests (no server to start)"
+            return 0
+            ;;
+        "utility")
+            log_info "Utility package detected - skipping smoke tests (no server to start)"
+            return 0
+            ;;
+    esac
     
     # Detect available start scripts
     local start_cmd=""

@@ -178,6 +178,9 @@ if (isPostInstall) {
     await installSonarScanner();
     await installDevDependency('eslint');
     await installDevDependency('@eslint/js');
+    await installDevDependency('@typescript-eslint/eslint-plugin');
+    await installDevDependency('@typescript-eslint/parser');
+    await installDevDependency('typescript');
     await setupESLintConfig();
     await setupSonarProperties();
     await setupPreCommitHook(gitRoot);
