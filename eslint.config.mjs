@@ -7,7 +7,6 @@ try {
     typescriptParser = await import("@typescript-eslint/parser");
 } catch {
     // TypeScript packages not available, will use basic config
-    // eslint-disable-next-line no-console
     console.log("TypeScript ESLint packages not found, using basic JavaScript configuration");
 }
 
